@@ -1,0 +1,21 @@
+{
+    "media": [
+        {
+            "defName": "SBUXREWARDS",
+            "type": "png",
+            "file": "images/pebbleBucksV3_Rewards.png"
+        },
+        {
+            "defName": "SBUXSTARS",
+            "type": "png",
+            "file": "images/pebbleBucksV3_Stars.png"
+        },
+        {
+            "defName": "SBUXBARCODE",
+            "type": "png",
+            "file": "images/pebbleBucksV3.png"
+        }
+    ],
+    "friendlyVersion": "VERSION",
+    "versionDefName": "APP_RESOURCES"
+}
