@@ -23,7 +23,7 @@ PBL_APP_INFO(MY_HTTP_UUID,
              DEFAULT_MENU_ICON,
              APP_INFO_WATCH_FACE);
 
-#define SBUXURL "http://mattdonders.com/shiftedit/php/starbucks/starbucks.php"
+#define SBUXURL ""
 #define HTTP_COOKIE 1949327671
 
 // Posted variables
