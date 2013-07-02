@@ -15,6 +15,6 @@
 
 #define SBUXUSER "username"
 #define SBUXPASS "password"
-#define SBUXURL "http://mattdonders.com/shiftedit/php/starbucks.php"
+#define SBUXURL "http://mattdonders.com/shiftedit/php/starbucks/starbucks.php"
 	
 #endif

@@ -45,14 +45,12 @@ BmpContainer starsImageLayer;
 TextLayer rewardsLayer;
 BmpContainer rewardsImageLayer;
 
-static int our_latitude, our_longitude;
-static bool located;
-
 char strBalance[10];
 char strDollar[5];
 char strCents[5];
 char strStars[5];
 char strRewards[5];
+char strError[5];
 
 // HTTPebble Initialization
 void request_starbucks();
@@ -84,7 +82,12 @@ void success(int32_t cookie, int http_status, DictionaryIterator* received, void
 		uint16_t intError = errors_tuple->value->int16;
 		
 		if (intError == 999) {
-			text_layer_set_text(&balanceLayer, "Invalid Login!");
+			text_layer_set_font(&balanceLayer, fonts_get_system_font(FONT_KEY_GOTHIC_18));
+			text_layer_set_text(&balanceLayer, "Invalid Login");
+		}
+		else {
+			mini_snprintf(strError, 5, ".%d", intError);
+			text_layer_set_text(&balanceLayer, strError);
 		}
 		
 		return;	
