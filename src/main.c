@@ -20,7 +20,7 @@ static uint8_t IMAGES[] = {
 PBL_APP_INFO(MY_HTTP_UUID,
              "Pebble Bucks", "Matt Donders",
              1, 0, /* App version */
-             DEFAULT_MENU_ICON,
+             RESOURCE_ID_MENUICON,
              APP_INFO_STANDARD_APP);
 
 #define HTTP_COOKIE 1949327671
