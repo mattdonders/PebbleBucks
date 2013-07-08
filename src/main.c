@@ -21,7 +21,7 @@ PBL_APP_INFO(MY_HTTP_UUID,
              "Pebble Bucks", "Matt Donders",
              1, 0, /* App version */
              DEFAULT_MENU_ICON,
-             APP_INFO_WATCH_FACE);
+             APP_INFO_STANDARD_APP);
 
 #define HTTP_COOKIE 1949327671
 
