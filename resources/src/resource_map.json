@@ -1,6 +1,11 @@
 {
     "media": [
         {
+            "defName": "MENUICON",
+            "type": "png",
+            "file": "images/pebbleBucksV3_Icon.png"
+        },
+        {
             "defName": "SBUXREWARDS",
             "type": "png",
             "file": "images/pebbleBucksV3_Rewards.png"

@@ -20,10 +20,9 @@ static uint8_t IMAGES[] = {
 PBL_APP_INFO(MY_HTTP_UUID,
              "Pebble Bucks", "Matt Donders",
              1, 0, /* App version */
-             DEFAULT_MENU_ICON,
-             APP_INFO_WATCH_FACE);
+             RESOURCE_ID_MENUICON,
+             APP_INFO_STANDARD_APP);
 
-#define SBUXURL ""
 #define HTTP_COOKIE 1949327671
 
 // Posted variables
@@ -35,6 +34,7 @@ PBL_APP_INFO(MY_HTTP_UUID,
 #define KEY_BALANCE_CNTS 2
 #define KEY_STARS 3
 #define KEY_REWARDS 4
+#define KEY_ERRORS 5
 
 	
 Window window;
@@ -45,14 +45,12 @@ BmpContainer starsImageLayer;
 TextLayer rewardsLayer;
 BmpContainer rewardsImageLayer;
 
-static int our_latitude, our_longitude;
-static bool located;
-
-char strBalance[20];
-char strDollar[20];
-char strCents[20];
-char strStars[20];
-char strRewards[20];
+char strBalance[10];
+char strDollar[5];
+char strCents[5];
+char strStars[5];
+char strRewards[5];
+char strError[5];
 
 // HTTPebble Initialization
 void request_starbucks();
@@ -78,13 +76,29 @@ void success(int32_t cookie, int http_status, DictionaryIterator* received, void
 	Tuple *balance_cents_tuple = dict_find(received, KEY_BALANCE_CNTS);
 	Tuple *stars_tuple = dict_find(received, KEY_STARS);
 	Tuple *rewards_tuple = dict_find(received, KEY_REWARDS);
+	Tuple *errors_tuple = dict_find(received, KEY_ERRORS);
+	
+	if (errors_tuple) {
+		uint16_t intError = errors_tuple->value->int16;
+		
+		if (intError == 999) {
+			text_layer_set_font(&balanceLayer, fonts_get_system_font(FONT_KEY_GOTHIC_18));
+			text_layer_set_text(&balanceLayer, "Invalid Login");
+		}
+		else {
+			mini_snprintf(strError, 5, ".%d", intError);
+			text_layer_set_text(&balanceLayer, strError);
+		}
+		
+		return;	
+	}
 	
 	if(balance_dollar_tuple && balance_cents_tuple) {
 		uint8_t intDollar = balance_dollar_tuple->value->int8;
 		uint8_t intCents = balance_cents_tuple->value->int8;
 		
-		mini_snprintf(strDollar, 20, "$%d", intDollar);
-		mini_snprintf(strCents, 20, ".%d", intCents);
+		mini_snprintf(strDollar, 5, "$%d", intDollar);
+		mini_snprintf(strCents, 5, ".%d", intCents);
 		
 		strncpy(strBalance, strDollar, sizeof(strBalance));
 		strncat(strBalance, strCents, (sizeof(strBalance) - strlen(strBalance)) );
@@ -95,7 +109,7 @@ void success(int32_t cookie, int http_status, DictionaryIterator* received, void
 	if(stars_tuple) {
 		uint8_t intStars = stars_tuple->value->int8;
 		//mini_snprintf(strStars, 20, "Stars: %d", intStars);
-		mini_snprintf(strStars, 20, "%d", intStars);
+		mini_snprintf(strStars, 5, "%d", intStars);
 		//text_layer_set_text(&starsLayer, "S - YES!");
 		text_layer_set_text(&starsLayer, strStars);
 	}
@@ -103,10 +117,9 @@ void success(int32_t cookie, int http_status, DictionaryIterator* received, void
 	if(rewards_tuple) {
 		uint8_t intRewards = rewards_tuple->value->int8;
 		//mini_snprintf(strRewards, 20, "Rewards: %d", intRewards);
-		mini_snprintf(strRewards, 20, "%d", intRewards);
+		mini_snprintf(strRewards, 5, "%d", intRewards);
 		//text_layer_set_text(&rewardsLayer, "R - YES!");
 		text_layer_set_text(&rewardsLayer, strRewards);
-
 	}	
 	
 }
