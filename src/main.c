@@ -135,6 +135,7 @@ void handle_init(AppContextRef ctx) {
   (void)ctx;
 
   window_init(&window, "Pebble Window");
+  window_set_fullscreen(&window, true);
   window_stack_push(&window, true /* Animated */);
 	
   resource_init_current_app(&APP_RESOURCES);
