@@ -125,7 +125,32 @@ void success(int32_t cookie, int http_status, DictionaryIterator* received, void
 }
 
 void reconnect(void* context) {
+  // request_starbucks();
+}
+
+void select_single_click_handler(ClickRecognizerRef recognizer, Window *window) {
+  (void)recognizer;
+  (void)window;
+
   request_starbucks();
+}
+
+// Click Handler Config
+// Only setup select single click for now
+void click_config_provider(ClickConfig **config, Window *window) {
+  (void)window;
+
+  config[BUTTON_ID_SELECT]->click.handler = (ClickHandler) select_single_click_handler;
+	
+/*
+  config[BUTTON_ID_SELECT]->long_click.handler = (ClickHandler) select_long_click_handler;
+
+  config[BUTTON_ID_UP]->click.handler = (ClickHandler) up_single_click_handler;
+  config[BUTTON_ID_UP]->click.repeat_interval_ms = 100;
+
+  config[BUTTON_ID_DOWN]->click.handler = (ClickHandler) down_single_click_handler;
+  config[BUTTON_ID_DOWN]->click.repeat_interval_ms = 100;
+*/
 }
 
 
@@ -139,6 +164,9 @@ void handle_init(AppContextRef ctx) {
   window_stack_push(&window, true /* Animated */);
 	
   resource_init_current_app(&APP_RESOURCES);
+	
+  // Attach our desired button functionality
+  window_set_click_config_provider(&window, (ClickConfigProvider) click_config_provider);
 
 /*
   text_layer_init(&barcodeLayer, GRect(0, 0, 144, 66));
