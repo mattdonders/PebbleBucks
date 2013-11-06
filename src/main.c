@@ -1,143 +1,124 @@
 
-#include "pebble_os.h"
-#include "pebble_app.h"
-#include "pebble_fonts.h"
+#include <pebble_os.h>
+#include <pebble_app.h>
+#include <pebble_fonts.h>
 	
-#include "config.h"	
-#include "http.h"
+#include "config.h"
 #include "util.h"
 #include "mini-printf.h"
-	
-static uint8_t IMAGES[] = {
-	RESOURCE_ID_SBUXBARCODE,
-	RESOURCE_ID_SBUXSTARS,
-	RESOURCE_ID_SBUXREWARDS,
-};
 
-// Define Universal Unique Identifier
-// 9141B628-BC89-498E-B147--D65A01B823C2
-#define MY_HTTP_UUID { 0x91, 0x41, 0xB6, 0x28, 0xBC, 0x89, 0x49, 0x8E, 0xB1, 0x47, 0xD6, 0x5A, 0x01, 0xB8, 0x23, 0xC2 }
-PBL_APP_INFO(MY_HTTP_UUID,
-             "Pebble Bucks", "Matt Donders",
-             1, 0, /* App version */
-             RESOURCE_ID_MENUICON,
-             APP_INFO_STANDARD_APP);
 
-#define HTTP_COOKIE 1949327671
+enum StarbucksKey {
+  KEY_USERNAME,   // TUPLE_CSTRING
+  KEY_PASSWORD,   // TUPLE_CSTRING
+  KEY_BALANCE,    // TUPLE_CSTRING
+  KEY_STARS,      // TUPLE_INT
+  KEY_REWARDS,    // TUPLE_INT
+  KEY_ERROR       // TUPLE_INT
+} StarbucksKey;
 
-// Posted variables
-#define KEY_USERNAME 1
-#define KEY_PASSWORD 2
 
-// Received variables
-#define KEY_BALANCE_DLR 1
-#define KEY_BALANCE_CNTS 2
-#define KEY_STARS 3
-#define KEY_REWARDS 4
-#define KEY_ERRORS 5
+#define kAppSyncInBuffSize  124
+#define kAppSyncOutBuffSize 256
+static AppSync sync;
+static uint8_t sync_buffer[kAppSyncOutBuffSize];
 
-	
-Window window;
-BmpContainer barcodeLayer;
-TextLayer balanceLayer;
-TextLayer starsLayer;
-BmpContainer starsImageLayer;
-TextLayer rewardsLayer;
-BmpContainer rewardsImageLayer;
+#define kSyncValueEmpty     ((const char *)"")
+#define kSyncValueLoading   ((const char *)"...")
 
-char strBalance[10];
-char strDollar[5];
-char strCents[5];
 char strStars[5];
 char strRewards[5];
 char strError[5];
 
+Window *window;
+BitmapLayer *barcodeLayer;
+GBitmap *barcodeBitmap;
+TextLayer *balanceLayer;
+TextLayer *starsLayer;
+BitmapLayer *starsImageLayer;
+GBitmap *starsBitmap;
+TextLayer *rewardsLayer;
+BitmapLayer *rewardsImageLayer;
+GBitmap *rewardsBitmap;
+
 // HTTPebble Initialization
 void request_starbucks();
 
-void failed(int32_t cookie, int http_status, void* context) {
-	if(cookie == HTTP_COOKIE) {
-		text_layer_set_text(&balanceLayer, "COOKIE 0 | HTTP FAILED");
-	}
-	else if(cookie == HTTP_COOKIE) {
-		text_layer_set_text(&balanceLayer, "COOKIE GOOD | HTTP FAILED");
-	}
+static void sync_error_callback(DictionaryResult dict_error, AppMessageResult app_message_error, void *context)
+{
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "App Message Sync Error: %d", app_message_error);
 }
 
-void success(int32_t cookie, int http_status, DictionaryIterator* received, void* context) {
-	if(cookie != HTTP_COOKIE) {
-		text_layer_set_text(&balanceLayer, "COOKIE BAD | SUCCESS");
-		return;
-	}
-	
-	text_layer_set_text(&balanceLayer, "Cookie good - waiting for result...");
-	
-	Tuple *balance_dollar_tuple = dict_find(received, KEY_BALANCE_DLR);
-	Tuple *balance_cents_tuple = dict_find(received, KEY_BALANCE_CNTS);
-	Tuple *stars_tuple = dict_find(received, KEY_STARS);
-	Tuple *rewards_tuple = dict_find(received, KEY_REWARDS);
-	Tuple *errors_tuple = dict_find(received, KEY_ERRORS);
-	
-	if (errors_tuple) {
-		uint16_t intError = errors_tuple->value->int16;
-		
-		if (intError == 999) {
-			text_layer_set_font(&balanceLayer, fonts_get_system_font(FONT_KEY_GOTHIC_18));
-			text_layer_set_text(&balanceLayer, "Invalid Login");
-		}
-		else {
-			mini_snprintf(strError, 5, ".%d", intError);
-			text_layer_set_text(&balanceLayer, strError);
-		}
-		
-		return;	
-	}
-	
-	if(balance_dollar_tuple && balance_cents_tuple) {
-		uint8_t intDollar = balance_dollar_tuple->value->int8;
-		uint8_t intCents = balance_cents_tuple->value->int8;
-		
-		mini_snprintf(strDollar, 5, "$%d", intDollar);
-		mini_snprintf(strCents, 5, ".%d", intCents);
-		
-		strncpy(strBalance, strDollar, sizeof(strBalance));
-		strncat(strBalance, strCents, (sizeof(strBalance) - strlen(strBalance)) );
-		
-		text_layer_set_text(&balanceLayer, strBalance);
-	}
-	
-	if(stars_tuple) {
-		uint8_t intStars = stars_tuple->value->int8;
-		//mini_snprintf(strStars, 20, "Stars: %d", intStars);
-		mini_snprintf(strStars, 5, "%d", intStars);
-		//text_layer_set_text(&starsLayer, "S - YES!");
-		text_layer_set_text(&starsLayer, strStars);
-	}
-
-	if(rewards_tuple) {
-		uint8_t intRewards = rewards_tuple->value->int8;
-		//mini_snprintf(strRewards, 20, "Rewards: %d", intRewards);
-		mini_snprintf(strRewards, 5, "%d", intRewards);
-		//text_layer_set_text(&rewardsLayer, "R - YES!");
-		text_layer_set_text(&rewardsLayer, strRewards);
-	}	
-	
+static void sync_tuple_changed_callback(const uint32_t key, const Tuple* new_tuple, const Tuple* old_tuple, void* context)
+{
+  switch (new_tuple->key) {
+    case KEY_BALANCE:
+      APP_LOG(APP_LOG_LEVEL_DEBUG, "KEY_BALANCE: %s", new_tuple->value->cstring);
+      text_layer_set_text(balanceLayer, new_tuple->value->cstring);
+      break;
+    case KEY_STARS:
+      {
+        uint8_t intStars = new_tuple->value->int8;
+        APP_LOG(APP_LOG_LEVEL_DEBUG, "KEY_STARS: %d", intStars);
+        
+        mini_snprintf(strStars, 5, "%d", intStars);
+        
+        text_layer_set_text(starsLayer, strStars);
+      }
+      break;
+    case KEY_REWARDS:
+      {
+        uint8_t intRewards = new_tuple->value->int8;
+        APP_LOG(APP_LOG_LEVEL_DEBUG, "KEY_REWARDS: %d", intRewards);
+        
+        mini_snprintf(strRewards, 5, "%d", intRewards);
+        
+        text_layer_set_text(rewardsLayer, strRewards);
+      }
+      break;
+    case KEY_ERROR:
+      {
+        uint8_t intError = new_tuple->value->int8;
+        APP_LOG(APP_LOG_LEVEL_DEBUG, "KEY_ERROR: %d", intError);
+        
+        mini_snprintf(strError, 5, "%d", intError);
+        
+        text_layer_set_text(balanceLayer, strError);
+      }
+      break;
+    default:
+      break;
+  }
 }
 
-void reconnect(void* context) {
-  // request_starbucks();
+void request_starbucks()
+{
+  DictionaryIterator *iter;
+  Tuplet user = TupletCString(KEY_USERNAME, SBUXUSER);
+  Tuplet pass = TupletCString(KEY_PASSWORD, SBUXPASS);
+  app_message_out_get(&iter);
+
+  if (iter == NULL) {
+    return;
+  }
+
+  dict_write_tuplet(iter, &user);
+  dict_write_tuplet(iter, &pass);
+  dict_write_end(iter);
+
+  app_message_out_send();
+  app_message_out_release();
 }
 
-void select_single_click_handler(ClickRecognizerRef recognizer, Window *window) {
-  (void)recognizer;
-  (void)window;
-
+void select_single_click_handler(ClickRecognizerRef recognizer, void *context)
+{
   request_starbucks();
 }
 
 // Click Handler Config
 // Only setup select single click for now
-void click_config_provider(ClickConfig **config, Window *window) {
+void click_config_provider(ClickConfig **config, Window *window)
+{
   (void)window;
 
   config[BUTTON_ID_SELECT]->click.handler = (ClickHandler) select_single_click_handler;
@@ -156,112 +137,110 @@ void click_config_provider(ClickConfig **config, Window *window) {
 
 // Standard app initialisation
 
-void handle_init(AppContextRef ctx) {
-  (void)ctx;
-
-  window_init(&window, "Pebble Window");
-  window_set_fullscreen(&window, true);
-  window_stack_push(&window, true /* Animated */);
-	
-  resource_init_current_app(&APP_RESOURCES);
+void window_load(Window *window)
+{
+  Layer *window_layer = window_get_root_layer(window);
 	
   // Attach our desired button functionality
-  window_set_click_config_provider(&window, (ClickConfigProvider) click_config_provider);
-
-/*
-  text_layer_init(&barcodeLayer, GRect(0, 0, 144, 66));
-  text_layer_set_text(&barcodeLayer, "BARCODE");
-  text_layer_set_font(&barcodeLayer, fonts_get_system_font(FONT_KEY_DROID_SERIF_28_BOLD));
-  text_layer_set_text_alignment(&barcodeLayer, GTextAlignmentCenter);
-  layer_add_child(&window.layer, &barcodeLayer.layer);
-*/
+  window_set_click_config_provider(window, (ClickConfigProvider) click_config_provider);
 
   // Barcode Image Layer
-  bmp_init_container(IMAGES[0], &barcodeLayer);
-  layer_set_frame(&barcodeLayer.layer.layer, GRect(2, 2, 140, 66));
-  layer_add_child(&window.layer, &barcodeLayer.layer.layer);
+  barcodeLayer = bitmap_layer_create(GRect(2, 2, 140, 66));//(GRect) { .origin = { 2, 2 }, .size = { 140, 66 }});
+  barcodeBitmap = gbitmap_create_with_resource(RESOURCE_ID_SBUXBARCODE);
+  bitmap_layer_set_bitmap(barcodeLayer, barcodeBitmap);
+  layer_add_child(window_layer, bitmap_layer_get_layer(barcodeLayer));
 	
   // Balance Text Layer
-  text_layer_init(&balanceLayer, GRect(0, 67, 144, 51));
-  text_layer_set_text(&balanceLayer, "BALANCE");
-  text_layer_set_font(&balanceLayer, fonts_get_system_font(FONT_KEY_GOTHAM_30_BLACK));
-  text_layer_set_text_alignment(&balanceLayer, GTextAlignmentCenter);
-  layer_add_child(&window.layer, &balanceLayer.layer);
+  balanceLayer = text_layer_create(GRect(0, 67, 144, 51));
+  text_layer_set_text(balanceLayer, "BALANCE");
+  text_layer_set_font(balanceLayer, fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD));
+  text_layer_set_text_alignment(balanceLayer, GTextAlignmentCenter);
+  layer_add_child(window_layer, text_layer_get_layer(balanceLayer));
 	
 	
   // Stars Image & Text Layers
-  bmp_init_container(IMAGES[1], &starsImageLayer);
-  layer_set_frame(&starsImageLayer.layer.layer, GRect(7, 117, 34, 51));
-  layer_add_child(&window.layer, &starsImageLayer.layer.layer);
+  starsImageLayer = bitmap_layer_create(GRect(7, 117, 34, 51));
+  starsBitmap = gbitmap_create_with_resource(RESOURCE_ID_SBUXSTARS);
+  bitmap_layer_set_bitmap(starsImageLayer, starsBitmap);
+  layer_add_child(window_layer, bitmap_layer_get_layer(starsImageLayer));
 	
-  text_layer_init(&starsLayer, GRect(36, 130, 36, 51));
-  text_layer_set_text(&starsLayer, "STARS");
-  text_layer_set_font(&starsLayer, fonts_get_system_font(FONT_KEY_GOTHIC_18));
-  text_layer_set_text_alignment(&starsLayer, GTextAlignmentCenter);
-  layer_add_child(&window.layer, &starsLayer.layer);
+  starsLayer = text_layer_create(GRect(36, 130, 36, 51));
+  text_layer_set_text(starsLayer, "STARS");
+  text_layer_set_font(starsLayer, fonts_get_system_font(FONT_KEY_GOTHIC_18));
+  text_layer_set_text_alignment(starsLayer, GTextAlignmentCenter);
+  layer_add_child(window_layer, text_layer_get_layer(starsLayer));
 	
 	
   // Rewards Image & Text Layers
-  bmp_init_container(IMAGES[2], &rewardsImageLayer);
-  layer_set_frame(&rewardsImageLayer.layer.layer, GRect(77, 117, 34, 51));
-  layer_add_child(&window.layer, &rewardsImageLayer.layer.layer);
+  
+  rewardsImageLayer = bitmap_layer_create(GRect(77, 117, 34, 51));
+  rewardsBitmap = gbitmap_create_with_resource(RESOURCE_ID_SBUXREWARDS);
+  bitmap_layer_set_bitmap(rewardsImageLayer, rewardsBitmap);
+  layer_add_child(window_layer, bitmap_layer_get_layer(rewardsImageLayer));
 	
-  text_layer_init(&rewardsLayer, GRect(108, 130, 36, 51));
-  text_layer_set_text(&rewardsLayer, "REWARDS");
-  text_layer_set_font(&rewardsLayer, fonts_get_system_font(FONT_KEY_GOTHIC_18));
-  text_layer_set_text_alignment(&rewardsLayer, GTextAlignmentCenter);
-  layer_add_child(&window.layer, &rewardsLayer.layer);
-
-  // HTTP Parameter Setup
-  http_set_app_id(34345157);
-  http_register_callbacks((HTTPCallbacks){
-		.failure=failed,
-		.success=success,
-		.reconnect=reconnect
-	}, (void*)ctx);
-	
-	request_starbucks();
+  rewardsLayer = text_layer_create(GRect(108, 130, 36, 51));
+  text_layer_set_text(rewardsLayer, "REWARDS");
+  text_layer_set_font(rewardsLayer, fonts_get_system_font(FONT_KEY_GOTHIC_18));
+  text_layer_set_text_alignment(rewardsLayer, GTextAlignmentCenter);
+  layer_add_child(window_layer, text_layer_get_layer(rewardsLayer));
 }
 
-void pbl_main(void *params) {
-  PebbleAppHandlers handlers = {
-    .init_handler = &handle_init,
-	.messaging_info = {
-			.buffer_sizes = {
-				.inbound = 124,
-				.outbound = 256,
-			}
-		},
+void window_unload(Window *window)
+{
+  bitmap_layer_destroy(barcodeLayer);
+  bitmap_layer_destroy(starsImageLayer);
+  bitmap_layer_destroy(rewardsImageLayer);
+  
+  gbitmap_destroy(barcodeBitmap);
+  gbitmap_destroy(starsBitmap);
+  gbitmap_destroy(rewardsBitmap);
+
+  text_layer_destroy(balanceLayer);
+  text_layer_destroy(starsLayer);
+  text_layer_destroy(rewardsLayer);
+}
+
+void init()
+{
+  window = window_create();
+  window_set_fullscreen(window, true);
+  window_set_window_handlers(window, (WindowHandlers) {
+    .load = window_load,
+    .unload = window_unload,
+  });
+  const bool animated = true;
+
+  Tuplet initial_values[] = {
+    TupletCString(KEY_USERNAME, kSyncValueEmpty),
+    TupletCString(KEY_PASSWORD, kSyncValueEmpty),
+    TupletCString(KEY_BALANCE,  kSyncValueLoading),
+    TupletInteger(KEY_STARS,    0),
+    TupletInteger(KEY_REWARDS,  0),
+    TupletInteger(KEY_ERROR,    0)
   };
-  app_event_loop(params, &handlers);
+    
+  app_message_open(kAppSyncInBuffSize, kAppSyncOutBuffSize);
+  request_starbucks();
+    
+  app_sync_init(&sync, sync_buffer, sizeof(sync_buffer), initial_values, ARRAY_LENGTH(initial_values),
+                sync_tuple_changed_callback, sync_error_callback, NULL);
+    
+  window_stack_push(window, animated);
 }
 
-void request_starbucks() {
-	// Build the HTTP request
-	DictionaryIterator *body;
-	HTTPResult result = http_out_get(SBUXURL, HTTP_COOKIE, &body);
-	if(result == HTTP_BUSY) {
-		text_layer_set_text(&balanceLayer, "ERROR - HTTP OUT BUSY");
-	}
-	else if(result != HTTP_OK) {
-		//text_layer_set_text(&balanceLayer, (char* )&result);
-		text_layer_set_text(&balanceLayer, "ERROR - HTTP OUT GET");
-		//return; // Don't care - send it anyway.
-	}
-	
-	dict_write_cstring(body, KEY_USERNAME, SBUXUSER);
-	dict_write_cstring(body, KEY_PASSWORD, SBUXPASS);
-
-	// Now that it's built, send it.
-	if(http_out_send() != HTTP_OK) {
-		text_layer_set_text(&balanceLayer, "ERROR - HTTP OUT SEND");
-		text_layer_set_text(&rewardsLayer, "N/A");
-		text_layer_set_text(&starsLayer, "N/A");
-		//return; // Don't care - want to test it anyway.
-	}
-	else {
-		text_layer_set_text(&balanceLayer, "Wait...");
-		text_layer_set_text(&rewardsLayer, "...");
-		text_layer_set_text(&starsLayer, "...");
-	}
+void deinit()
+{
+  app_sync_deinit(&sync);
+    
+  window_destroy(window);
 }
+
+int main(void)
+{
+  init();
+  
+  app_event_loop();
+  
+  deinit();
+}
+

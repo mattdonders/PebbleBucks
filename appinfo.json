@@ -1,0 +1,46 @@
+{
+  "uuid": "9141b628-bc89-498e-b147-049f49c099ad",
+  "shortName": "Pebble Bucks",
+  "longName": "Pebble Bucks",
+  "companyName": "Matt Donders",
+  "versionCode": 2,
+  "versionLabel": "2.0.0",
+  "watchapp": {
+    "watchface": false
+  },
+  "appKeys": {
+	"username": 0,
+	"password": 1,
+	"balance": 2,
+	"stars": 3,
+	"rewards": 4,
+	"error": 5
+  },
+  "resources": {
+    "media": [
+        {
+            "name": "SBUXBARCODE",
+            "type": "png",
+            "file": "images/pebbleBucksV3.png"
+        },
+        {
+            "name": "SBUXSTARS",
+            "type": "png",
+            "file": "images/pebbleBucksV3_Stars.png"
+        },
+        {
+            "name": "SBUXREWARDS",
+            "type": "png",
+            "file": "images/pebbleBucksV3_Rewards.png"
+        },
+        {
+            "name": "MENUICON",
+            "type": "png",
+            "file": "images/pebbleBucksV3_Icon.png",
+			"menuIcon": true
+        }
+    ],
+    "friendlyVersion": "VERSION",
+    "versionDefName": "APP_RESOURCES"
+  }
+}
